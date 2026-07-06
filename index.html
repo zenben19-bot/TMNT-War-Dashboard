@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Torn Faction Information Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #eee;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1, h2 {
+      color: #ffcc00;
+    }
+
+    input, button {
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 6px;
+      border: none;
+      font-size: 14px;
+    }
+
+    input {
+      width: 100%;
+      max-width: 500px;
+    }
+
+    button {
+      background: #ffcc00;
+      color: #111;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .card {
+      background: #1c1c1c;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      border: 1px solid #333;
+      padding: 8px;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    th {
+      background: #222;
+      color: #ffcc00;
+    }
+
+    .online { color: #00ff88; }
+    .idle { color: #ffaa00; }
+    .offline { color: #888; }
+    .error { color: #ff5555; }
+    .success { color: #00ff88; }
+
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #0b0b0b;
+      padding: 10px;
+      border-radius: 8px;
+      max-height: 400px;
+      overflow: auto;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Torn Faction Information Dashboard</h1>
+
+  <div class="card">
+    <p>Paste your Torn API key below. Your key stays in your browser and is not saved anywhere.</p>
+    <input type="password" id="apiKey" placeholder="aVFMhGBT3LjCALdJ" />
+    <br />
+    <button onclick="loadFaction()">Load Faction Info</button>
+    <button onclick="clearDashboard()">Clear</button>
+    <p id="status"></p>
+  </div>
+
+  <div id="dashboard"></div>
+
+  <script>
+    async function loadFaction() {
+      const key = document.getElementById("apiKey").value.trim();
+      const status = document.getElementById("status");
+      const dashboard = document.getElementById("dashboard");
+
+      dashboard.innerHTML = "";
+      status.textContent = "";
+
+      if (!key) {
+        status.innerHTML = "<span class='error'>Please enter your Torn API key.</span>";
+        return;
+      }
+
+      status.textContent = "Loading faction data...";
+
+      const selections = [
+        "basic",
+        "profile",
+        "members",
+        "stats",
+        "upgrades",
+        "chains",
+        "territory",
+        "rankedwars",
+        "raidwars",
+        "crimes",
+        "armory",
+        "weapons",
+        "armor",
+        "medical",
+        "drugs",
+        "boosters",
+        "caches",
+        "cesium",
+        "temporary"
+      ].join(",");
+
+      const url = `https://api.torn.com/faction/?selections=${selections}&key=${key}`;
+
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.error) {
+          status.innerHTML = `<span class="error">API Error: ${data.error.error}</span>`;
+          return;
+        }
+
+        status.innerHTML = "<span class='success'>Faction data loaded successfully.</span>";
+        renderFaction(data);
+
+      } catch (error) {
+        status.innerHTML = `<span class="error">Failed to load data: ${error.message}</span>`;
+      }
+    }
+
+    function renderFaction(data) {
+      const dashboard = document.getElementById("dashboard");
+
+      dashboard.innerHTML = `
+        ${renderBasicInfo(data)}
+        ${renderMembers(data.members)}
+        ${renderStats(data.stats)}
+        ${renderUpgrades(data.upgrades)}
+        ${renderChains(data.chains)}
+        ${renderRankedWars(data.rankedwars)}
+        ${renderTerritory(data.territory)}
+        ${renderCrimes(data.crimes)}
+        ${renderArmory(data)}
+        ${renderRawData(data)}
+      `;
+    }
+
+    function renderBasicInfo(data) {
+      return `
+        <div class="card">
+          <h2>Faction Overview</h2>
+          <p><strong>Name:</strong> ${safe(data.name)}</p>
+          <p><strong>ID:</strong> ${safe(data.ID)}</p>
+          <p><strong>Tag:</strong> ${safe(data.tag)}</p>
+          <p><strong>Leader:</strong> ${safe(data.leader)}</p>
+          <p><strong>Co-Leader:</strong> ${safe(data["co-leader"])}</p>
+          <p><strong>Respect:</strong> ${num(data.respect)}</p>
+          <p><strong>Age:</strong> ${safe(data.age)} days</p>
+          <p><strong>Capacity:</strong> ${safe(data.capacity)}</p>
+          <p><strong>Members:</strong> ${data.members ? Object.keys(data.members).length : "N/A"}</p>
+          <p><strong>Best Chain:</strong> ${safe(data.best_chain)}</p>
+          <p><strong>Territory War:</strong> ${safe(data.territory_war)}</p>
+          <p><strong>Raid War:</strong> ${safe(data.raid_war)}</p>
+          <p><strong>Ranked War:</strong> ${safe(data.ranked_war)}</p>
+        </div>
+      `;
+    }
+
+    function renderMembers(members) {
+      if (!members) return card("Members", "No member data found.");
+
+      let rows = Object.entries(members).map(([id, m]) => {
+        const statusClass = getStatusClass(m.last_action?.status);
+
+        return `
+          <tr>
+            <td>${id}</td>
+            <td>${safe(m.name)}</td>
+            <td>${safe(m.level)}</td>
+            <td>${safe(m.position)}</td>
+            <td class="${statusClass}">${safe(m.last_action?.status)}</td>
+            <td>${safe(m.last_action?.relative)}</td>
+            <td>${safe(m.status?.description)}</td>
+            <td>${safe(m.days_in_faction)}</td>
+          </tr>
+        `;
+      }).join("");
+
+      return `
+        <div class="card">
+          <h2>Members</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Level</th>
+                <th>Position</th>
+                <th>Activity</th>
+                <th>Last Action</th>
+                <th>Status</th>
+                <th>Days In Faction</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderStats(stats) {
+      if (!stats) return card("Faction Stats", "No stats data found.");
+
+      let rows = Object.entries(stats).map(([key, value]) => `
+        <tr>
+          <td>${formatKey(key)}</td>
+          <td>${num(value)}</td>
+        </tr>
+      `).join("");
+
+      return `
+        <div class="card">
+          <h2>Faction Stats</h2>
+          <table>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderUpgrades(upgrades) {
+      if (!upgrades) return card("Upgrades", "No upgrade data found.");
+
+      return `
+        <div class="card">
+          <h2>Faction Upgrades</h2>
+          <pre>${escapeHtml(JSON.stringify(upgrades, null, 2))}</pre>
+        </div>
+      `;
+    }
+
+    function renderChains(chains) {
+      if (!chains) return card("Chains", "No chain data found.");
+
+      return `
+        <div class="card">
+          <h2>Chains</h2>
+          <pre>${escapeHtml(JSON.stringify(chains, null, 2))}</pre>
+        </div>
+      `;
+    }
+
+    function renderRankedWars(rankedwars) {
+      if (!rankedwars) return card("Ranked Wars", "No ranked war data found.");
+
+      return `
+        <div class="card">
+          <h2>Ranked Wars</h2>
+          <pre>${escapeHtml(JSON.stringify(rankedwars, null, 2))}</pre>
+        </div>
+      `;
+    }
+
+    function renderTerritory(territory) {
+      if (!territory) return card("Territory", "No territory data found.");
+
+      return `
+        <div class="card">
+          <h2>Territory</h2>
+          <pre>${escapeHtml(JSON.stringify(territory, null, 2))}</pre>
+        </div>
+      `;
+    }
+
+    function renderCrimes(crimes) {
+      if (!crimes) return card("Organized Crimes", "No crime data found.");
+
+      return `
+        <div class="card">
+          <h2>Organized Crimes</h2>
+          <pre>${escapeHtml(JSON.stringify(crimes, null, 2))}</pre>
+        </div>
+      `;
+    }
+
+    function renderArmory(data) {
+      const armorySections = [
+        "armory",
+        "weapons",
+        "armor",
+        "medical",
+        "drugs",
+        "boosters",
+        "caches",
+        "cesium",
+        "temporary"
+      ];
+
+      let html = "";
+
+      armorySections.forEach(section => {
+        if (data[section]) {
+          html += `
+            <h3>${formatKey(section)}</h3>
+            <pre>${escapeHtml(JSON.stringify(data[section], null, 2))}</pre>
+          `;
+        }
+      });
+
+      if (!html) return card("Armory", "No armory data found.");
+
+      return `
+        <div class="card">
+          <h2>Faction Armory</h2>
+          ${html}
+        </div>
+      `;
+    }
+
+    function renderRawData(data) {
+      return `
+        <div class="card">
+          <h2>Complete Raw API Data</h2>
+          <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+        </div>
+      `;
+    }
+
+    function card(title, text) {
+      return `
+        <div class="card">
+          <h2>${title}</h2>
+          <p>${text}</p>
+        </div>
+      `;
+    }
+
+    function safe(value) {
+      if (value === undefined || value === null || value === "") return "N/A";
+      return escapeHtml(String(value));
+    }
+
+    function num(value) {
+      if (value === undefined || value === null) return "N/A";
+      if (typeof value === "number") return value.toLocaleString();
+      return safe(value);
+    }
+
+    function formatKey(key) {
+      return String(key)
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function getStatusClass(status) {
+      if (!status) return "";
+      status = status.toLowerCase();
+      if (status.includes("online")) return "online";
+      if (status.includes("idle")) return "idle";
+      return "offline";
+    }
+
+    function escapeHtml(text) {
+      return text
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function clearDashboard() {
+      document.getElementById("dashboard").innerHTML = "";
+      document.getElementById("status").textContent = "";
+      document.getElementById("apiKey").value = "";
+    }
+  </script>
+</body>
+</html>
