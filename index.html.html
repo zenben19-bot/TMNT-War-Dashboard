@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TMNT Dashboard v8.3 - Enemy Suppression</title>
+<style>
+:root{--bg:#0d1016;--card:#151a22;--card2:#1b2230;--text:#edf2f7;--muted:#98a2b3;--gold:#ffd000;--green:#2ee59d;--red:#ff5757;--orange:#ffb13b;--blue:#5da8ff;--border:#2b3443}*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text)}header{padding:18px 22px;background:#090b0f;border-bottom:1px solid var(--border)}h1{margin:0;color:var(--gold);font-size:26px}.sub{color:var(--muted);margin-top:6px}main{padding:16px;max-width:1600px;margin:auto}.card,.controls{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px}.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}input,select,button,textarea{padding:10px;border-radius:8px;border:1px solid var(--border);font-size:14px}input,select,textarea{background:#0b0e13;color:var(--text)}textarea{width:100%;min-height:95px;font-family:Consolas,monospace}button{background:var(--gold);color:#111;font-weight:bold;cursor:pointer}button.secondary{background:var(--card2);color:var(--text)}button.danger{background:#581b26;color:#fff}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.stat{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px}.stat .label{color:var(--muted);font-size:12px;text-transform:uppercase}.stat .value{font-size:22px;font-weight:bold;margin-top:5px}table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}th,td{border-bottom:1px solid var(--border);padding:8px;text-align:left;vertical-align:top}th{color:var(--gold);background:#10151d}tr:hover{background:#111722}.right{text-align:right}.small{font-size:12px;color:var(--muted)}.online{color:var(--green)}.idle{color:var(--orange)}.offline{color:var(--muted)}.hospital{color:var(--red)}.travel{color:var(--blue)}.ok{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--orange)}.boxerr{border-left:4px solid var(--red);background:#201116;padding:10px;margin:8px 0}.boxok{border-left:4px solid var(--green);background:#0e1d18;padding:10px;margin:8px 0}.hide{display:none}.nowrap{white-space:nowrap}.pill{display:inline-block;padding:3px 7px;border-radius:999px;background:#222b38;border:1px solid var(--border);font-size:12px}.score{font-weight:bold;font-size:16px}.threatHigh{color:var(--red);font-weight:bold}.threatMed{color:var(--orange);font-weight:bold}.threatLow{color:var(--green);font-weight:bold}.tabbtn.active{outline:2px solid var(--gold)}@media(max-width:750px){.row>*{width:100%}}
+</style>
+</head>
+<body>
+<header><h1>TMNT Dashboard v8.3</h1><div class="sub">v8 base + enemy threat score / suppression engine. Member Energy, HP, Medical cooldown, and Drug cooldown remain unchanged from v8.</div></header>
+<main>
+<div class="controls">
+  <div class="row">
+    <input id="apiKey" type="password" placeholder="Your Torn API Key for faction members" style="min-width:320px;flex:1" />
+    <button onclick="loadMembers()">Load Members</button>
+    <button class="secondary" onclick="toggleBarsPanel()">Member API Keys Setup</button>
+    <button class="secondary" onclick="toggleAuto()" id="autoBtn">Auto Refresh: Off</button>
+    <button class="secondary" onclick="saveKey()">Save Key Locally</button>
+    <button class="danger" onclick="clearAll()">Clear</button>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <button id="membersTabBtn" class="secondary tabbtn active" onclick="showMembersTab()">Member Readiness</button>
+    <button id="enemyTabBtn" class="secondary tabbtn" onclick="showEnemyTab()">Enemy Suppression</button>
+    <input id="memberSearch" placeholder="Search members..." oninput="renderMembers()" style="min-width:220px" />
+    <select id="memberFilter" onchange="renderMembers()"><option value="all">All members</option><option value="online">Online</option><option value="idle">Idle</option><option value="hospital">Hospital</option><option value="travel">Travel/Abroad</option><option value="okay">Okay</option></select>
+    <button class="secondary" onclick="exportCSV()">Export CSV</button>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <input id="enemyFactionId" placeholder="Enemy faction ID" style="min-width:180px" />
+    <button class="secondary" onclick="loadEnemyFaction()">Load Enemy Faction</button>
+    <button class="secondary" onclick="toggleEnemyPanel()">Enemy Intel Setup</button>
+    <button class="secondary" onclick="saveEnemyIntel()">Save Enemy Intel</button>
+  </div>
+  <p id="status" class="small"></p>
+</div>
+
+<div id="barsPanel" class="card hide">
+  <h2>Optional Member API Keys Setup</h2>
+  <p class="small">Faction member lists do not expose live energy, HP, medical cooldown, or drug cooldown. To show those columns, each member must give you their own API key with User: basic, bars, and cooldowns access. Paste one key per line below. Keys stay in this browser unless you press save.</p>
+  <textarea id="memberKeys" placeholder="One member API key per line. Example:\nABC123...\nDEF456..."></textarea>
+  <div class="row" style="margin-top:8px">
+    <button onclick="loadBarsForKeys()">Load Energy / HP / Cooldowns</button>
+    <button class="secondary" onclick="saveMemberKeys()">Save Member Keys Locally</button>
+    <button class="danger" onclick="clearMemberKeys()">Clear Member Keys</button>
+  </div>
+  <p class="small">Tip: Start with only a few keys to test. Minimal/custom keys should include User: basic, User: bars, and User: cooldowns. Torn rate limits API calls, so loading 20+ member keys can take a moment.</p>
+</div>
+
+<div id="enemyPanel" class="card hide">
+  <h2>Enemy Threat / Suppression Setup</h2>
+  <p class="small">Optional manual intel improves scoring. Paste one enemy per line. Format: TornID, battle stats/spy estimate, note. Example: 1234567, 250m, active reviver. If no manual stats are entered, the engine scores using level, activity, status, and availability.</p>
+  <textarea id="enemyIntel" placeholder="1234567, 250m, active threat
+7654321, 2b, avoid solo"></textarea>
+  <div class="row" style="margin-top:8px">
+    <button onclick="saveEnemyIntel()">Save Enemy Intel Locally</button>
+    <button class="danger" onclick="clearEnemyIntel()">Clear Enemy Intel</button>
+  </div>
+</div>
+
+<div id="summary" class="grid"></div>
+<div id="content"></div>
+</main>
+<script>
+const API_V2='https://api.torn.com/v2';
+const API_V1='https://api.torn.com';
+let MEMBERS_DATA=null, BARS_BY_ID={}, ERRORS={}, autoTimer=null, ENEMY_DATA=null, ENEMY_INTEL={}, CURRENT_TAB="members";
+function withKey(url,key){return url+(url.includes('?')?'&':'?')+'key='+encodeURIComponent(key)+'&comment=TMNTv83';}
+async function fetchJson(url,key){const r=await fetch(withKey(url,key)); let j={}; try{j=await r.json()}catch(e){throw new Error('Could not parse API response');} if(j.error)throw new Error(j.error.error||JSON.stringify(j.error)); if(!r.ok)throw new Error('HTTP '+r.status); return j;}
+async function firstWorking(key,urls){let last=''; for(const u of urls){try{return await fetchJson(u,key)}catch(e){last=e.message;}} throw new Error(last||'All API attempts failed');}
+async function loadMembers(){const key=apiKey.value.trim(); if(!key)return setStatus('Enter your Torn API key first.',true); setStatus('Loading members...'); ERRORS={}; try{MEMBERS_DATA=await firstWorking(key,[API_V2+'/faction/members?strip_tags=true',API_V1+'/faction/?selections=members']); setStatus('Members loaded.',false,true);}catch(e){ERRORS.members=e.message; setStatus('Members failed: '+e.message,true);} renderAll();}
+async function loadBarsForKeys(){const keys=parseKeys(); if(!keys.length)return setStatus('Paste at least one member API key.',true); setStatus('Loading Energy / HP / cooldowns from member keys...'); let ok=0, fail=0, notes=[]; for(const key of keys){try{const pack=await getUserBarsPack(key); const id=extractUserId(pack); const bars=extractBars(pack); const cds=extractCooldowns(pack); const merged={...bars,...cds}; if(id && (merged.energy_current!=='' || merged.hp_current!=='' || merged.medical_cd!=='' || merged.drug_cd!=='')){BARS_BY_ID[String(id)]=merged; ok++; notes.push('Loaded data for Torn ID '+id+'.');} else {fail++; notes.push('Key failed: Torn ID, bars, or cooldown data was missing. The key probably needs User: basic + User: bars + User: cooldowns access.');}}catch(e){fail++; notes.push('Key failed: '+e.message);} await sleep(350);} setStatus(`Member API data loaded for ${ok} key(s). Failed: ${fail}. ${notes.join(' ')}`,fail>0,ok>0); renderAll();}
+async function getUserBarsPack(key){let pack={}; let errors=[]; const attempts=[API_V1+'/user/?selections=basic,bars,cooldowns',API_V1+'/user/?selections=bars,cooldowns,basic',API_V1+'/user/?selections=bars,cooldowns',API_V1+'/user/?selections=bars,basic',API_V2+'/user?selections=basic,bars,cooldowns',API_V2+'/user?selections=bars,cooldowns,basic',API_V2+'/user/bars',API_V2+'/user/cooldowns',API_V2+'/user']; for(const u of attempts){try{const j=await fetchJson(u,key); pack=deepMerge(pack,j); const b=extractBars(pack), c=extractCooldowns(pack); if((b.energy_current!==''||b.hp_current!==''||c.medical_cd!==''||c.drug_cd!=='') && extractUserId(pack))return pack;}catch(e){errors.push(e.message);}} const b=extractBars(pack), c=extractCooldowns(pack); if(b.energy_current!==''||b.hp_current!==''||c.medical_cd!==''||c.drug_cd!=='')return pack; throw new Error(errors.slice(-2).join(' / ')||'No bars/cooldowns data returned');}
+function deepMerge(a,b){if(!b||typeof b!=='object')return a; for(const [k,v] of Object.entries(b)){if(v&&typeof v==='object'&&!Array.isArray(v)&&a[k]&&typeof a[k]==='object'&&!Array.isArray(a[k]))deepMerge(a[k],v); else a[k]=v;} return a;}
+function extractUserId(j){return j.id||j.ID||j.player_id||j.user_id||j.profile?.id||j.profile?.ID||j.basic?.id||j.basic?.ID||j.user?.id||j.user?.ID;}
+function extractBars(j){const e=j.energy||j.bars?.energy||j.user?.energy||j.user?.bars?.energy||{}; const l=j.life||j.hp||j.health||j.bars?.life||j.bars?.hp||j.user?.life||j.user?.hp||j.user?.bars?.life||j.user?.bars?.hp||{}; return {energy_current:e.current??e.value??e.now??'', energy_max:e.maximum??e.max??e.maximum_value??'', hp_current:l.current??l.value??l.now??'', hp_max:l.maximum??l.max??l.maximum_value??'', raw:j};}
+function extractCooldowns(j){const c=j.cooldowns||j.user?.cooldowns||j.cooldown||j.user?.cooldown||{}; const med=c.medical??c.med??c.meds??c.medical_cooldown??c.medicalCooldown??''; const drug=c.drug??c.drugs??c.drug_cooldown??c.drugCooldown??''; return {medical_cd:normalizeSeconds(med), drug_cd:normalizeSeconds(drug)};}
+function normalizeSeconds(v){if(v&&typeof v==='object')v=v.current??v.value??v.remaining??v.seconds??v.time??''; if(v===0)return 0; return v??'';}
+function parseKeys(){return [...new Set((memberKeys.value||'').split(/\s+/).map(x=>x.trim()).filter(Boolean))];}
+function memberList(){return arr(MEMBERS_DATA?.members||MEMBERS_DATA).filter(m=>m&&typeof m==='object'&&(m.name||m.id||m.ID));}
+function arr(x){if(Array.isArray(x))return x; if(x&&typeof x==='object')return Object.entries(x).map(([id,v])=>typeof v==='object'?{id,...v}:v); return [];}
+function renderAll(){renderSummary(); if(CURRENT_TAB==='enemy')renderEnemy(); else renderMembers();}
+function renderSummary(){const members=memberList(); const online=members.filter(m=>String(m.last_action?.status||'').toLowerCase().includes('online')).length; const hosp=members.filter(m=>isHospital(m)).length; const travel=members.filter(m=>isTravel(m)).length; summary.innerHTML=[['Members',members.length],['Online',online],['Hospital',hosp],['Travel / Abroad',travel],['Member Keys Loaded',Object.keys(BARS_BY_ID).length],['Enemy Loaded',enemyList().length]].map(([l,v])=>`<div class="stat"><div class="label">${esc(l)}</div><div class="value">${esc(v)}</div></div>`).join('');}
+function renderMembers(){let members=memberList(); const q=(memberSearch.value||'').toLowerCase(), f=memberFilter.value; if(q)members=members.filter(m=>String(m.name||'').toLowerCase().includes(q)||String(m.id||m.ID||'').includes(q)||String(m.position||'').toLowerCase().includes(q)); if(f!=='all')members=members.filter(m=>matchesFilter(m,f)); members.sort((a,b)=>statusScore(a)-statusScore(b)||String(a.name).localeCompare(String(b.name))); let body=ERRORS.members?`<div class="boxerr">Members error: ${esc(ERRORS.members)}</div>`:''; if(!members.length)body+=`<p class="small">No members loaded yet.</p>`; body+=`<table><thead><tr><th>ID</th><th>Name</th><th>Level</th><th>Position</th><th>Activity</th><th>Last Action</th><th>Status</th><th>Days In Faction</th><th>Revive</th><th class="right">Energy</th><th class="right">HP</th><th class="right">Medical CD</th><th class="right">Drug CD</th></tr></thead><tbody>${members.map(m=>{const id=m.id||m.ID; const b=BARS_BY_ID[id]||{}; return `<tr><td>${esc(id)}</td><td>${esc(m.name)}</td><td>${esc(m.level)}</td><td>${esc(m.position)}</td><td class="${activityClass(m.last_action?.status)}">${esc(m.last_action?.status)}</td><td>${esc(m.last_action?.relative||m.last_action?.timestamp)}</td><td class="${stateClass(m.status?.state||m.status?.description)}">${esc(m.status?.description||m.status?.state)}</td><td>${esc(m.days_in_faction)}</td><td>${esc(m.revive_setting||m.is_revivable||'')}</td><td class="right">${barText(b.energy_current,b.energy_max)}</td><td class="right">${barText(b.hp_current,b.hp_max)}</td><td class="right">${timeText(b.medical_cd)}</td><td class="right">${timeText(b.drug_cd)}</td></tr>`}).join('')}</tbody></table>`; content.innerHTML=`<div class="card"><h2>Members Information</h2>${body}</div>`;}
+function barText(cur,max){if(cur===''||cur==null)return '—'; return esc(cur)+(max!==''&&max!=null?'/'+esc(max):'');}
+function timeText(sec){if(sec===''||sec==null)return '—'; sec=Number(sec); if(!isFinite(sec))return esc(sec); if(sec<=0)return 'Ready'; const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=Math.floor(sec%60); return h>0?`${h}h ${m}m`:m>0?`${m}m ${s}s`:`${s}s`;}
+function matchesFilter(m,f){if(f==='online')return String(m.last_action?.status||'').toLowerCase().includes('online'); if(f==='idle')return String(m.last_action?.status||'').toLowerCase().includes('idle'); if(f==='hospital')return isHospital(m); if(f==='travel')return isTravel(m); if(f==='okay')return !isHospital(m)&&!isTravel(m); return true;}
+function isHospital(m){const s=String(m.status?.state+' '+m.status?.description).toLowerCase();return s.includes('hospital');}
+function isTravel(m){const s=String(m.status?.state+' '+m.status?.description).toLowerCase();return s.includes('travel')||s.includes('abroad')||s.includes('flight');}
+function statusScore(m){if(isHospital(m))return 1; if(String(m.last_action?.status||'').toLowerCase().includes('online'))return 2; if(String(m.last_action?.status||'').toLowerCase().includes('idle'))return 3; if(isTravel(m))return 4; return 5;}
+function activityClass(s){s=String(s||'').toLowerCase(); if(s.includes('online'))return 'online'; if(s.includes('idle'))return 'idle'; return 'offline';}
+function stateClass(s){s=String(s||'').toLowerCase(); if(s.includes('hospital'))return 'hospital'; if(s.includes('travel')||s.includes('abroad')||s.includes('flight'))return 'travel'; if(s.includes('okay'))return 'ok'; return '';}
+function exportCSV(){if(CURRENT_TAB==='enemy')return exportEnemyCSV(); const rows=[['ID','Name','Level','Position','Activity','Last Action','Status','Days In Faction','Revive','Energy','HP','Medical CD','Drug CD']]; memberList().forEach(m=>{const id=m.id||m.ID,b=BARS_BY_ID[id]||{}; rows.push([id,m.name,m.level,m.position,m.last_action?.status,m.last_action?.relative||m.last_action?.timestamp,m.status?.description||m.status?.state,m.days_in_faction,m.revive_setting||m.is_revivable||'',barText(b.energy_current,b.energy_max).replace(/&[#\w]+;/g,''),barText(b.hp_current,b.hp_max).replace(/&[#\w]+;/g,''),timeText(b.medical_cd),timeText(b.drug_cd)]);}); downloadCSV(rows,'tmnt_members_v8_3.csv');}
+
+function showMembersTab(){CURRENT_TAB='members'; membersTabBtn.classList.add('active'); enemyTabBtn.classList.remove('active'); memberSearch.disabled=false; memberFilter.disabled=false; renderMembers();}
+function showEnemyTab(){CURRENT_TAB='enemy'; membersTabBtn.classList.remove('active'); enemyTabBtn.classList.add('active'); memberSearch.disabled=true; memberFilter.disabled=true; renderEnemy();}
+function toggleEnemyPanel(){enemyPanel.classList.toggle('hide');}
+async function loadEnemyFaction(){const key=apiKey.value.trim(), fid=enemyFactionId.value.trim(); if(!key)return setStatus('Enter your Torn API key first.',true); if(!fid)return setStatus('Enter the enemy faction ID first.',true); setStatus('Loading enemy faction members...'); try{ENEMY_DATA=await firstWorking(key,[API_V2+'/faction/'+encodeURIComponent(fid)+'/members?strip_tags=true',API_V1+'/faction/'+encodeURIComponent(fid)+'?selections=basic,members']); setStatus('Enemy faction loaded. Threat scores generated.',false,true); showEnemyTab();}catch(e){ERRORS.enemy=e.message; setStatus('Enemy faction failed: '+e.message,true); showEnemyTab();} renderAll();}
+function enemyList(){return arr(ENEMY_DATA?.members||ENEMY_DATA).filter(m=>m&&typeof m==='object'&&(m.name||m.id||m.ID));}
+function parseEnemyIntel(){const out={}; (enemyIntel.value||'').split(/\n+/).forEach(line=>{const parts=line.split(',').map(x=>x.trim()); if(!parts[0])return; const id=parts[0].replace(/[^0-9]/g,''); if(!id)return; out[id]={raw:line, power:parsePower(parts[1]||''), note:parts.slice(2).join(', ')};}); return out;}
+function parsePower(v){v=String(v||'').toLowerCase().replace(/,/g,'').trim(); if(!v)return 0; let mult=1; if(v.endsWith('k')){mult=1e3;v=v.slice(0,-1)} if(v.endsWith('m')){mult=1e6;v=v.slice(0,-1)} if(v.endsWith('b')){mult=1e9;v=v.slice(0,-1)} if(v.endsWith('t')){mult=1e12;v=v.slice(0,-1)} const n=Number(v); return isFinite(n)?n*mult:0;}
+function scoreEnemy(m){const id=String(m.id||m.ID||''), intel=ENEMY_INTEL[id]||{}; let score=0; const lvl=Number(m.level||0); score+=Math.min(25,Math.max(0,lvl/4)); if(intel.power){score+=Math.min(35,Math.log10(intel.power+1)*4.2);} const act=String(m.last_action?.status||'').toLowerCase(); if(act.includes('online'))score+=20; else if(act.includes('idle'))score+=12; else score+=4; if(isHospital(m))score-=35; else if(isTravel(m))score-=18; else score+=15; const s=String(m.status?.state+' '+m.status?.description).toLowerCase(); if(s.includes('okay'))score+=5; score=Math.max(0,Math.min(100,Math.round(score))); return score;}
+function threatLabel(score,m){if(isHospital(m))return 'SUPPRESSED / HOSP'; if(isTravel(m))return 'AWAY / WATCH'; if(score>=80)return 'HIGH THREAT'; if(score>=60)return 'ACTIVE THREAT'; if(score>=35)return 'CHAIN FILLER'; return 'LOW PRIORITY';}
+function actionFor(score,m){if(isHospital(m))return 'Keep timer watched'; if(isTravel(m))return 'Watch return'; if(score>=80)return 'Hosp first / avoid solo'; if(score>=60)return 'Suppress when online'; if(score>=35)return 'Use as chain target'; return 'Ignore unless free hit';}
+function threatClass(score,m){if(isHospital(m)||isTravel(m))return 'warn'; if(score>=70)return 'threatHigh'; if(score>=40)return 'threatMed'; return 'threatLow';}
+function renderEnemy(){ENEMY_INTEL=parseEnemyIntel(); let enemies=enemyList(); let body=ERRORS.enemy?`<div class="boxerr">Enemy error: ${esc(ERRORS.enemy)}</div>`:''; if(!enemies.length)body+=`<p class="small">No enemy faction loaded yet. Enter enemy faction ID and press Load Enemy Faction.</p>`; enemies=enemies.map(m=>({m,score:scoreEnemy(m)})).sort((a,b)=>b.score-a.score||String(a.m.name).localeCompare(String(b.m.name))); body+=`<table><thead><tr><th>ID</th><th>Name</th><th>Level</th><th>Activity</th><th>Last Action</th><th>Status</th><th class="right">Threat Score</th><th>Threat Label</th><th>Commander Action</th><th>Intel Note</th></tr></thead><tbody>${enemies.map(x=>{const m=x.m,id=m.id||m.ID,intel=ENEMY_INTEL[String(id)]||{}; return `<tr><td>${esc(id)}</td><td>${esc(m.name)}</td><td>${esc(m.level)}</td><td class="${activityClass(m.last_action?.status)}">${esc(m.last_action?.status)}</td><td>${esc(m.last_action?.relative||m.last_action?.timestamp)}</td><td class="${stateClass(m.status?.state||m.status?.description)}">${esc(m.status?.description||m.status?.state)}</td><td class="right score ${threatClass(x.score,m)}">${esc(x.score)}</td><td><span class="pill ${threatClass(x.score,m)}">${esc(threatLabel(x.score,m))}</span></td><td>${esc(actionFor(x.score,m))}</td><td>${esc(intel.note||intel.raw||'')}</td></tr>`}).join('')}</tbody></table>`; content.innerHTML=`<div class="card"><h2>Enemy Threat / Suppression Engine</h2><p class="small">Score is a commander estimate from level, activity, status/availability, and optional manual spy intel. It does not replace real spy reports.</p>${body}</div>`;}
+function saveEnemyIntel(){ENEMY_INTEL=parseEnemyIntel(); localStorage.setItem('tmntEnemyIntel',enemyIntel.value); setStatus('Enemy intel saved locally in this browser.',false,true); if(CURRENT_TAB==='enemy')renderEnemy();}
+function clearEnemyIntel(){localStorage.removeItem('tmntEnemyIntel'); enemyIntel.value=''; ENEMY_INTEL={}; if(CURRENT_TAB==='enemy')renderEnemy();}
+function exportEnemyCSV(){const rows=[['ID','Name','Level','Activity','Last Action','Status','Threat Score','Threat Label','Commander Action','Intel Note']]; enemyList().map(m=>({m,score:scoreEnemy(m)})).sort((a,b)=>b.score-a.score).forEach(x=>{const m=x.m,id=m.id||m.ID,intel=ENEMY_INTEL[String(id)]||{}; rows.push([id,m.name,m.level,m.last_action?.status,m.last_action?.relative||m.last_action?.timestamp,m.status?.description||m.status?.state,x.score,threatLabel(x.score,m),actionFor(x.score,m),intel.note||intel.raw||'']);}); downloadCSV(rows,'tmnt_enemy_suppression_v8_3.csv');}
+function downloadCSV(rows,name){const csv=rows.map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\n'); const blob=new Blob([csv],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click();}
+
+function toggleBarsPanel(){barsPanel.classList.toggle('hide');}
+function toggleAuto(){if(autoTimer){clearInterval(autoTimer);autoTimer=null;autoBtn.textContent='Auto Refresh: Off';return;} autoTimer=setInterval(()=>{loadMembers(); if(parseKeys().length)loadBarsForKeys();},30000); autoBtn.textContent='Auto Refresh: On';}
+function saveKey(){localStorage.setItem('tmntDashKey',apiKey.value.trim());setStatus('Faction key saved locally in this browser.',false,true);}function saveMemberKeys(){localStorage.setItem('tmntMemberKeys',memberKeys.value);setStatus('Member keys saved locally in this browser.',false,true);}function clearMemberKeys(){localStorage.removeItem('tmntMemberKeys');memberKeys.value='';BARS_BY_ID={};renderAll();}
+function clearAll(){localStorage.removeItem('tmntDashKey');localStorage.removeItem('tmntMemberKeys');localStorage.removeItem('tmntEnemyIntel');apiKey.value='';memberKeys.value='';enemyIntel.value='';enemyFactionId.value='';MEMBERS_DATA=null;ENEMY_DATA=null;BARS_BY_ID={};ENEMY_INTEL={};ERRORS={};summary.innerHTML='';content.innerHTML='';setStatus('Cleared.');}
+function setStatus(msg,bad=false,good=false){status.innerHTML=`<span class="${bad?'bad':good?'ok':''}">${esc(msg)}</span>`;}function esc(v){if(v===undefined||v===null)return '';return String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');}function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+(function init(){apiKey.value=localStorage.getItem('tmntDashKey')||''; memberKeys.value=localStorage.getItem('tmntMemberKeys')||''; enemyIntel.value=localStorage.getItem('tmntEnemyIntel')||''; ENEMY_INTEL=parseEnemyIntel(); renderAll();})();
+</script>
+</body>
+</html>
